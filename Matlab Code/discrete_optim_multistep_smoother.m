@@ -1,4 +1,4 @@
-% Discrete time solver
+% Discrete time dynamic program solver
 tic
 T = 1; % length of period
 pen = 300; % penalty per unit of non compliance
@@ -15,7 +15,7 @@ time_steps = 50;
 dt = T/time_steps;
 dS = sqrt(3 * dt) * sigma_f;
 grid_points_s = ceil((S_max - S_min)/dS);
-grid_points_b = 101; % have to choose this carefully so that we get enough grid points for the interpolation to not be problematic
+grid_points_b = 101; % have to choose this carefully 
 T_grid = linspace(0, 1, time_steps+1);
 psi = 0;
 eta = 0;
@@ -38,68 +38,37 @@ for t = time_steps:-1:1
     s_noise = normrnd(0, sqrt(dt), [1, nsim]);
     for s = 1:grid_points_s
         for b = 1:grid_points_b
-            if b_grid(b) + h * dt * (time_steps-t+1) >= req % guaranteed to comply with baseline generation
+            if b_grid(b) + h * dt * (time_steps-t+1) >= req % marginal benefit of additional SREC is 0
                 b0 = h;
                 t0 = -S_grid(s)/gamma; 
             elseif b_grid(b) + (h + pen / zeta) * dt * (time_steps-t+1) <= req
-                % not going to comply even with extreme production
+                % marginal benefit of additional SREC is P
                 b0 = h + pen / zeta;
                 t0 = (pen - S_grid(s))/gamma;
-                if t0 == 0 % helps with getting the right minimum
+                if t0 == 0 % avoids potential saddle point
                     t0 = -1;
                 end
             else % should roughly correspond to the 'interesting' regime
                 if s > 1
                     b0 = gen_opt(t, s-1, b);
-                    t0 = trade_opt(t, s-1, b)-1;% -1 to make sure it doesnt get stuck at 0
+                    t0 = trade_opt(t, s-1, b)-1;% -1 ensures it doesnt get stuck at 0
                 elseif b>1
                     b0 = gen_opt(t, s, b-1);
-                    t0 = trade_opt(t, s, b-1)-1;% -1 to make sure it doesnt get stuck at 0
+                    t0 = trade_opt(t, s, b-1)-1;% -1 ensures it doesnt get stuck at 0
                 else
                     b0 = gen_opt(t+1, 1, 1);
                     t0 = trade_opt(t+1, 1, 1); % if we're at (1,1), look at the future period
                 end
             end
             x0 = [b0 t0];
-            %y = runningCost([b0-40 t0-40], t, S_grid(s), b_grid(b),pars, V, b_grid, S_grid, s_noise)
             f = @(ctrl)runningCost(ctrl, t, S_grid(s), b_grid(b), pars, V, b_grid, S_grid, s_noise);
             [x, fval] = fminsearch(f, x0, options);
             V(t, s, b) = fval;
             gen_opt(t,s,b) = x(1);
             trade_opt(t,s,b) = x(2);
         end
-          s
     end
-    t
 end
-toc
-save('single_period_h_low.mat')
-% %load('single_period_t1.mat')
-% tt = time_steps-1;%time_steps-10;
-% f1 = figure('visible','on');
-% surf(bb, ss, squeeze(V(tt,:,:)), 'edgecolor', 'none')
-% ylabel('SREC Price')
-% xlabel('Banked SRECs')
-% zlabel(strcat('Value function at t = ', num2str(T_grid(tt))))
-% title(strcat('Value function at t = ', num2str(T_grid(tt))))
-% 
-% f2 = figure('visible','on');
-% surf(bb, ss, squeeze(gen_opt(tt,:,:)), 'edgecolor','none')
-% ylabel('SREC Price')
-% xlabel('Banked SRECs')
-% zlabel(strcat('Optimal generation at t = ', num2str(T_grid(tt))))
-% title(strcat('Optimal generation t = ', num2str(T_grid(tt))))
-% 
-% f3 = figure('visible','on');
-% surf(bb, ss, squeeze(trade_opt(tt,:,:)), 'edgecolor', 'none')
-% ylabel('SREC Price')
-% xlabel('Banked SRECs')
-% zlabel(strcat('Optimal trading at t = ', num2str(T_grid(tt))))
-% title(strcat('Optimal trading t = ', num2str(T_grid(tt))))
-
-%y = runningCost([528.1498 -8.1498], 52, S_grid(10), b_grid(50), pars, V, b_grid, S_grid, s_noise)
-%y = runningCost([528.0105 -8.0061], 52, S_grid(10), b_grid(50), pars, V,
-%b_grid, S_grid, s_noise)
 
 
 function y = runningCost(ctrl, t, S, b, pars, vals, b_grid, S_grid, s_noise)
